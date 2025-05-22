@@ -366,193 +366,9 @@ def extract_financial_metrics(text: str, company_name: str):
         print(f"Error processing with Gemini API: {e}")
         return {}
 
-def validate_falconebiz_url(url: str, company_name: str) -> tuple[bool, str]:
-    """
-    Validate falconebiz URL format and extract CIN if present.
-    Returns (is_valid, cin_code)
-    """
-    if not url.startswith("https://www.falconebiz.com/company/"):
-        return False, ""
-    
-    parts = url.split("-")
-    if len(parts) < 2:
-        return False, ""
-    
-    cin_code = parts[-1]
-    if not re.match(r'^[A-Z0-9]{21}$', cin_code):
-        return False, ""
-    
-    company_slug = company_name.lower().replace(" ", "-")
-    url_without_cin = "-".join(parts[:-1])
-    if company_slug not in url_without_cin.lower():
-        return False, ""
-    
-    return True, cin_code
-
-def construct_falconebiz_url(company_name: str, cin_code: str = "") -> str:
-    """
-    Construct a valid falconebiz URL with company name and optional CIN.
-    """
-    company_slug = company_name.lower().replace(" ", "-")
-    if cin_code:
-        return f"https://www.falconebiz.com/company/{company_slug}-{cin_code}"
-    return f"https://www.falconebiz.com/company/{company_slug}"
-
-async def crawl_falconebiz_data(url: str, company_name: str) -> str:
-    """
-    Crawl falconebiz.com URL and return concatenated markdown content.
-    """
-    browser_config = BrowserConfig(
-        headless=True,
-        browser_type="chromium",
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    )
-
-    filter_chain = FilterChain([
-        DomainFilter(
-            allowed_domains=["falconebiz.com"],
-            blocked_domains=[]
-        ),
-        URLPatternFilter(
-            patterns=[url]
-        ),
-        ContentTypeFilter(allowed_types=["text/html"]),
-        ContentRelevanceFilter(
-            query=f"company data {company_name}",
-            threshold=0.5
-        )
-    ])
-
-    keyword_scorer = KeywordRelevanceScorer(
-        keywords=[
-            "company", "financial", "directors", "cin", "incorporation",
-            "capital", "balance sheet", "annual report", "registration",
-            "roc", "status", "address", "email", company_name.lower()
-        ],
-        weight=0.8
-    )
-
-    run_config = CrawlerRunConfig(
-        deep_crawl_strategy=BestFirstCrawlingStrategy(
-            max_depth=0,
-            include_external=False,
-            max_pages=1,
-            filter_chain=filter_chain,
-            url_scorer=keyword_scorer
-        ),
-        excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
-        cache_mode='BYPASS',
-        verbose=True,
-        extraction_strategy=LLMExtractionStrategy(
-            extract_metadata=True,
-            extract_links=False
-        )
-    )
-
-    os.makedirs("financial_data", exist_ok=True)
-    structured_filename = f"financial_data/{company_name}_falconebiz_structured.txt"
-
-    async with AsyncWebCrawler(config=browser_config) as crawler:
-        try:
-            print(f"\nStarting crawl for falconebiz URL: {url}")
-            result = await crawler.arun(url=url, config=run_config)
-            
-            print("\nCrawl completed. Analyzing results...")
-            if isinstance(result, list) and result:
-                item = result[0]
-                print(f"\nItem type: {type(item)}")
-                
-                if hasattr(item, 'success'):
-                    print(f"Success status: {item.success}")
-                
-                content = None
-                
-                content_attrs = [
-                    'html', 'cleaned_html', 'fit_html', 'extracted_content',
-                    'markdown', 'markdown_v2', 'fit_markdown'
-                ]
-                
-                for attr in content_attrs:
-                    if hasattr(item, '_results') and isinstance(item._results, list) and item._results:
-                        if hasattr(item._results[0], attr):
-                            content = getattr(item._results[0], attr)
-                            print(f"\nFound content in {attr}")
-                            print(f"Content length: {len(content) if content else 0}")
-                            if content:
-                                break
-                
-                if not content and hasattr(item, 'markdown'):
-                    if hasattr(item.markdown, 'fit_markdown'):
-                        content = item.markdown.fit_markdown
-                        print("\nExtracted content from fit_markdown")
-                    elif hasattr(item.markdown, 'content'):
-                        content = item.markdown.content
-                        print("\nExtracted content from markdown.content")
-                
-                if content:
-                    print(f"\nFinal content length: {len(content)}")
-                    
-                    soup = BeautifulSoup(content, 'html.parser')
-                    extracted_data = []
-                    
-                    # Extract company details
-                    company_details = soup.find('div', class_='company-details')
-                    if company_details:
-                        print("\nFound company-details section")
-                        extracted_data.append("\nCompany Details:")
-                        for detail in company_details.find_all(['p', 'div']):
-                            text = detail.text.strip()
-                            if text and ":" in text:
-                                extracted_data.append(text)
-                    
-                    # Extract financial data
-                    financial_sections = soup.find_all(['div', 'section'], class_=re.compile(r'financial|balance|profit|loss|revenue|assets|liabilities', re.I))
-                    print(f"\nFound {len(financial_sections)} financial sections")
-                    for section in financial_sections:
-                        section_title = section.find_previous(['h2', 'h3', 'h4', 'div'], class_=re.compile(r'title|heading', re.I))
-                        if section_title:
-                            extracted_data.append(f"\n{section_title.text.strip()}:")
-                        
-                        for p in section.find_all(['p', 'div']):
-                            text = p.text.strip()
-                            if text and ":" in text:
-                                extracted_data.append(text)
-                    
-                    # Extract director information
-                    director_sections = soup.find_all(['div', 'section'], class_=re.compile(r'director|management|board', re.I))
-                    print(f"\nFound {len(director_sections)} director sections")
-                    for section in director_sections:
-                        section_title = section.find_previous(['h2', 'h3', 'h4', 'div'], class_=re.compile(r'title|heading', re.I))
-                        if section_title:
-                            extracted_data.append(f"\n{section_title.text.strip()}:")
-                        
-                        for p in section.find_all(['p', 'div']):
-                            text = p.text.strip()
-                            if text and ":" in text:
-                                extracted_data.append(text)
-                    
-                    if extracted_data:
-                        with open(structured_filename, "w", encoding="utf-8") as f:
-                            f.write("\n".join(extracted_data))
-                        print(f"\nSuccessfully saved structured content to {structured_filename}")
-                        return "\n".join(extracted_data)
-                    else:
-                        print("\nNo structured data extracted from the page")
-                else:
-                    print("\nNo content found in the crawled page")
-            else:
-                print("\nNo results returned from crawler")
-                
-        except Exception as e:
-            print(f"\nError crawling {url}: {str(e)}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-    
-    return ""
-
 async def main():
     """
-    Main function to extract CIN from zaubacorp.com, crawl thecompanycheck.com and falconebiz.com, and extract financial metrics.
+    Main function to extract CIN from zaubacorp.com, crawl thecompanycheck.com, and extract financial metrics.
     """
     max_results = 1
 
@@ -579,26 +395,17 @@ async def main():
         print("No content crawled from thecompanycheck URL")
         return
 
-    # Step 5: Construct and crawl falconebiz.com URL
-    falconebiz_url = construct_falconebiz_url(COMPANY_NAME, cin_code)
-    print(f"Constructed falconebiz URL: {falconebiz_url}")
-    falconebiz_content = await crawl_falconebiz_data(falconebiz_url, COMPANY_NAME)
-    if not falconebiz_content:
-        print("No content crawled from falconebiz URL")
-    else:
-        print("Successfully crawled falconebiz content")
-
-    # Step 6: Read the saved file and extract financial metrics
+    # Step 5: Read the saved file and extract financial metrics
     try:
         scraped_text = read_file(COMPANY_NAME)
     except Exception:
         print("Failed to read the scraped file")
         return
 
-    # Step 7: Extract metrics and charge details using Gemini
+    # Step 6: Extract metrics and charge details using Gemini
     extracted_data = extract_financial_metrics(scraped_text, COMPANY_NAME)
 
-    # Step 8: Save and print the extracted data
+    # Step 7: Save and print the extracted data
     if extracted_data:
         output_file = f"financial_data/{COMPANY_NAME}_extracted_financial_data.json"
         with open(output_file, "w", encoding="utf-8") as f:
