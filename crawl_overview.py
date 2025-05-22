@@ -411,11 +411,10 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
         
     return "\n\n".join(markdown_content)
 
-async def main():
+async def main(company_name: str):
     """
     Main function to run the company data crawler.
     """
-    company_name = "VALUE POINT SYSTEMS PRIVATE LIMITED"
     max_results = 10
     max_pages = 10
     max_depth = 2
@@ -433,4 +432,6 @@ async def main():
         return
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # For testing purposes
+    test_company = "VALUE POINT SYSTEMS PRIVATE LIMITED"
+    asyncio.run(main(test_company))

@@ -145,12 +145,10 @@ async def extract_company_data(company_name: str, crawled_content: str) -> dict:
         print(f"Error with Gemini extraction: {e}")
         return {}
 
-async def main():
+async def main(company_name: str):
     """
     Main function to run the company data extraction.
     """
-    company_name = "VALUE POINT SYSTEMS PRIVATE LIMITED"
-    
     # Read the crawled content from files
     crawled_content = []
     for filename in os.listdir("crawled_content"):
@@ -176,5 +174,6 @@ async def main():
         print("No data extracted")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main()) 
+    # For testing purposes
+    test_company = "VALUE POINT SYSTEMS PRIVATE LIMITED"
+    asyncio.run(main(test_company)) 
