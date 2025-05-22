@@ -5,16 +5,26 @@ import re
 import json
 import logging
 from json import JSONDecoder, JSONDecodeError
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 from datetime import datetime
 import time
+import pathlib
+import asyncio
+
+# Create necessary directories
+DATA_DIR = pathlib.Path("data")
+FINANCIAL_DATA_DIR = DATA_DIR / "financial_data"
+LOGS_DIR = DATA_DIR / "logs"
+
+for directory in [DATA_DIR, FINANCIAL_DATA_DIR, LOGS_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('company_overview.log'),
+        logging.FileHandler(LOGS_DIR / 'company_overview.log'),
         logging.StreamHandler()
     ]
 )
@@ -291,55 +301,51 @@ The JSON must be valid and well-formatted. Double-check all syntax before respon
             clean_name = re.sub(r'[-\s]+', '_', clean_name).lower()
             filename = f"{clean_name}_overview.json"
         
+        # Create company-specific directory
+        company_dir = FINANCIAL_DATA_DIR / clean_name
+        company_dir.mkdir(exist_ok=True)
+        
+        file_path = company_dir / filename
+        
         try:
-            with open(filename, 'w', encoding='utf-8') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"Report saved to: {filename}")
-            return filename
+            logger.info(f"Report saved to: {file_path}")
+            return str(file_path)
             
         except Exception as e:
             logger.error(f"Error saving report: {str(e)}")
             raise
 
-def main():
+async def main(company_name: str) -> Tuple[Dict[str, Any], str]:
     """
-    Main function to demonstrate usage.
+    Main function to process company data.
+    
+    Args:
+        company_name: Name of the company to research
+        
+    Returns:
+        Tuple of (report data, error message)
     """
     try:
         # Initialize the generator
         generator = CompanyOverviewGenerator()
         
-        # List of companies to analyze
-        companies = [
-            "Value Point Systems Private Limited",
-            "Riota Private Limited",
-            # Add more companies as needed
-        ]
+        # Generate report
+        report = generator.get_overview_report(company_name)
         
-        for company_name in companies:
-            logger.info(f"Processing: {company_name}")
-            
-            # Generate report
-            report = generator.get_overview_report(company_name)
-            
-            # Save report
-            filename = generator.save_report(report, company_name)
-            
-            # Print summary
-            print(f"\n{'='*60}")
-            print(f"COMPANY OVERVIEW REPORT: {company_name}")
-            print(f"{'='*60}")
-            print(f"CIN: {report.get('CIN Number', 'Not Found')}")
-            print(f"Status: {report.get('Company Status (for eFiling)', 'Not Found')}")
-            print(f"Sector: {report.get('Sector', 'Not Found')}")
-            print(f"Website: {report.get('website', 'Not Found')}")
-            print(f"Report saved to: {filename}")
-            print(f"{'='*60}\n")
-            
+        # Save report
+        filename = generator.save_report(report, company_name)
+        
+        logger.info(f"Successfully processed company: {company_name}")
+        return report, ""
+        
     except Exception as e:
-        logger.error(f"Error in main execution: {str(e)}")
-        raise
+        error_msg = f"Error processing company {company_name}: {str(e)}"
+        logger.error(error_msg)
+        return {}, error_msg
 
 if __name__ == "__main__":
-    main()
+    # For testing purposes
+    asyncio.run(main("VALUE POINT SYSTEMS PRIVATE LIMITED"))
