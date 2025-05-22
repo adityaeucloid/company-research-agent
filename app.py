@@ -2,12 +2,16 @@ import streamlit as st
 import asyncio
 import os
 import logging
+import nest_asyncio
 from crawl_overview import main as crawl_overview
 from crawl_financials import main as crawl_financials
 from extract_overview import main as extract_overview
 from extract_financials import main as extract_financials
 import json
 from dotenv import load_dotenv
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 # Configure logging
 logging.basicConfig(
@@ -78,7 +82,7 @@ def load_json_file(file_path):
         logger.error(f"Error loading {file_path}: {str(e)}", exc_info=True)
         return None
 
-async def run_pipeline(company_name: str):
+def run_async_pipeline(company_name: str):
     """Run the complete pipeline for company data extraction."""
     try:
         # Create tabs for different sections
@@ -89,27 +93,36 @@ async def run_pipeline(company_name: str):
             progress_container = st.empty()
             status_container = st.empty()
             
-            # Run crawling tasks in parallel
-            progress_container.info("Starting data crawling...")
-            status_container.info("Crawling company overview data...")
-            overview_task = asyncio.create_task(crawl_overview(company_name))
-            status_container.info("Crawling financial data...")
-            financials_task = asyncio.create_task(crawl_financials(company_name))
+            # Create new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            # Wait for crawling to complete
-            await asyncio.gather(overview_task, financials_task)
-            progress_container.success("Data crawling completed!")
-            
-            # Run extraction tasks in parallel
-            progress_container.info("Starting data extraction...")
-            status_container.info("Extracting company overview data...")
-            overview_extract_task = asyncio.create_task(extract_overview(company_name))
-            status_container.info("Extracting financial data...")
-            financials_extract_task = asyncio.create_task(extract_financials(company_name))
-            
-            # Wait for extraction to complete
-            await asyncio.gather(overview_extract_task, financials_extract_task)
-            progress_container.success("Data extraction completed!")
+            try:
+                # Run crawling tasks in parallel
+                progress_container.info("Starting data crawling...")
+                status_container.info("Crawling company overview data...")
+                overview_task = loop.create_task(crawl_overview(company_name))
+                status_container.info("Crawling financial data...")
+                financials_task = loop.create_task(crawl_financials(company_name))
+                
+                # Wait for crawling to complete
+                loop.run_until_complete(asyncio.gather(overview_task, financials_task))
+                progress_container.success("Data crawling completed!")
+                
+                # Run extraction tasks in parallel
+                progress_container.info("Starting data extraction...")
+                status_container.info("Extracting company overview data...")
+                overview_extract_task = loop.create_task(extract_overview(company_name))
+                status_container.info("Extracting financial data...")
+                financials_extract_task = loop.create_task(extract_financials(company_name))
+                
+                # Wait for extraction to complete
+                loop.run_until_complete(asyncio.gather(overview_extract_task, financials_extract_task))
+                progress_container.success("Data extraction completed!")
+                
+            finally:
+                # Clean up the event loop
+                loop.close()
             
             # Load and display results
             with overview_tab:
@@ -162,7 +175,7 @@ else:
         if not company_name:
             st.error("Please enter a company name.")
         else:
-            asyncio.run(run_pipeline(company_name))
+            run_async_pipeline(company_name)
 
 # Footer
 st.markdown("---")
