@@ -24,9 +24,9 @@ import asyncio
 import re
 
 # Hardcoded API keys for EC2
-GOOGLE_API_KEY = "your_gemini_api_key_here"
-OPENAI_API_KEY = "your_openai_api_key_here"
-TAVILY_API_KEY = "your_tavily_api_key_here"
+GOOGLE_API_KEY = "AIzaSyBUGmHKTcSaCiltjx9VFnAJfGjPxiP9vlk"
+OPENAI_API_KEY = "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"
+TAVILY_API_KEY = "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"
 
 def check_ec2_requirements():
     """
