@@ -266,7 +266,8 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
     """
     browser_config = BrowserConfig(
         headless=True,
-        browser_type="chromium"
+        browser_type="chromium",
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     )
 
     filter_chain = FilterChain([
@@ -311,7 +312,11 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
         ),
         excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
         cache_mode='BYPASS',
-        verbose=True
+        verbose=True,
+        extraction_strategy=LLMExtractionStrategy(
+            extract_metadata=True,
+            extract_links=False
+        )
     )
 
     markdown_content = []
@@ -350,112 +355,82 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
                 
                 if isinstance(result, list) and result:
                     item = result[0]
-                    print(f"Item type: {type(item)}")
-                    print(f"Item attributes: {dir(item)}")
+                    print(f"\nItem type: {type(item)}")
                     
-                    # Debug: Print the entire item dictionary
-                    print(f"Item dict: {item.__dict__ if hasattr(item, '__dict__') else 'No __dict__'}")
+                    if hasattr(item, 'success'):
+                        print(f"Success status: {item.success}")
                     
-                    if hasattr(item, 'success') and item.success:
-                        crawl_stats["successful_pages"] += 1
-                        
-                        # Try to get content from various attributes
-                        content = ""
-                        
-                        # Method 1: Try to get content from _results
-                        if hasattr(item, '_results') and item._results:
-                            for result_item in item._results:
-                                if hasattr(result_item, 'content'):
-                                    content = result_item.content
-                                    print(f"Found content in _results, length: {len(content)}")
+                    content = None
+                    
+                    # Try multiple content attributes
+                    content_attrs = [
+                        'html', 'cleaned_html', 'fit_html', 'extracted_content',
+                        'markdown', 'markdown_v2', 'fit_markdown'
+                    ]
+                    
+                    for attr in content_attrs:
+                        if hasattr(item, '_results') and isinstance(item._results, list) and item._results:
+                            if hasattr(item._results[0], attr):
+                                content = getattr(item._results[0], attr)
+                                print(f"\nFound content in {attr}")
+                                print(f"Content length: {len(content) if content else 0}")
+                                if content:
                                     break
+                    
+                    if not content and hasattr(item, 'markdown'):
+                        if hasattr(item.markdown, 'fit_markdown'):
+                            content = item.markdown.fit_markdown
+                            print("\nExtracted content from fit_markdown")
+                        elif hasattr(item.markdown, 'content'):
+                            content = item.markdown.content
+                            print("\nExtracted content from markdown.content")
+                    
+                    if content:
+                        print(f"\nFinal content length: {len(content)}")
                         
-                        # Method 2: Try to get content from dispatch_result
-                        if not content and hasattr(item, 'dispatch_result'):
-                            dispatch_result = item.dispatch_result
-                            if hasattr(dispatch_result, 'content'):
-                                content = dispatch_result.content
-                                print(f"Found content in dispatch_result, length: {len(content)}")
-                            elif hasattr(dispatch_result, 'text'):
-                                content = dispatch_result.text
-                                print(f"Found text in dispatch_result, length: {len(content)}")
-                            elif hasattr(dispatch_result, 'html'):
-                                content = dispatch_result.html
-                                print(f"Found HTML in dispatch_result, length: {len(content)}")
+                        # Save raw content for debugging
+                        debug_filename = f"debug/{company_name}_{website_name}_raw.txt"
+                        with open(debug_filename, "w", encoding="utf-8") as f:
+                            f.write(f"URL: {url}\n")
+                            f.write(f"Content length: {len(content)}\n")
+                            f.write(f"Content type: {type(content)}\n")
+                            f.write("\nContent:\n")
+                            f.write(content)
                         
-                        # Method 3: Try to get content from markdown
-                        if not content and hasattr(item, 'markdown'):
-                            if hasattr(item.markdown, 'fit_markdown'):
-                                content = item.markdown.fit_markdown
-                                print(f"Found fit_markdown content, length: {len(content)}")
-                            elif hasattr(item.markdown, 'content'):
-                                content = item.markdown.content
-                                print(f"Found markdown content, length: {len(content)}")
+                        # Save processed content
+                        filename = f"crawled_content/{company_name}_{website_name}.txt"
+                        with open(filename, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        print(f"Saved content to {filename}")
                         
-                        # Method 4: Try to get content from raw attributes
-                        if not content:
-                            for attr_name in ['content', 'text', 'html', 'raw_content', 'raw_html']:
-                                if hasattr(item, attr_name):
-                                    content = getattr(item, attr_name)
-                                    print(f"Found {attr_name} content, length: {len(content)}")
-                                    break
-                        
-                        # Method 5: Try to get content from metadata
-                        if not content and hasattr(item, 'metadata'):
-                            metadata = item.metadata
-                            if isinstance(metadata, dict):
-                                for key in ['content', 'text', 'html', 'raw_content', 'raw_html']:
-                                    if key in metadata:
-                                        content = metadata[key]
-                                        print(f"Found {key} in metadata, length: {len(content)}")
-                                        break
-                        
-                        if content:
-                            # Save raw content for debugging
-                            debug_filename = f"debug/{company_name}_{website_name}_raw.txt"
-                            with open(debug_filename, "w", encoding="utf-8") as f:
-                                f.write(f"URL: {url}\n")
-                                f.write(f"Content length: {len(content)}\n")
-                                f.write(f"Content type: {type(content)}\n")
-                                f.write("\nContent:\n")
-                                f.write(content)
-                            
-                            # Save processed content
-                            filename = f"crawled_content/{company_name}_{website_name}.txt"
-                            with open(filename, "w", encoding="utf-8") as f:
-                                f.write(content)
-                            print(f"Saved content to {filename}")
-                            
-                            if website_name == "falconebiz":
-                                falconebiz_content = content
-                                print(f"Stored falconebiz content, length: {len(content)}")
-                            markdown_content.append(content)
-                        else:
-                            print("No content found in any attribute")
-                            
-                            # Save debug information
-                            debug_filename = f"debug/{company_name}_{website_name}_debug.txt"
-                            with open(debug_filename, "w", encoding="utf-8") as f:
-                                f.write(f"URL: {url}\n")
-                                f.write(f"Item type: {type(item)}\n")
-                                f.write(f"Item attributes: {dir(item)}\n")
-                                f.write(f"Item dict: {item.__dict__ if hasattr(item, '__dict__') else 'No __dict__'}\n")
-                                if hasattr(item, '_results'):
-                                    f.write("\nResults:\n")
-                                    for idx, result_item in enumerate(item._results):
-                                        f.write(f"\nResult {idx}:\n")
-                                        f.write(f"Type: {type(result_item)}\n")
-                                        f.write(f"Attributes: {dir(result_item)}\n")
-                                        f.write(f"Dict: {result_item.__dict__ if hasattr(result_item, '__dict__') else 'No __dict__'}\n")
-                        
-                        score = item.metadata.get("score", 0) if hasattr(item, 'metadata') else 0
-                        depth = item.metadata.get("depth", 0) if hasattr(item, 'metadata') else 0
-                        crawl_stats["scores"].append(score)
-                        crawl_stats["depth_counts"][depth] = crawl_stats["depth_counts"].get(depth, 0) + 1
-                        
-                        print(f"Depth: {depth} | Score: {score:.2f} | {url}")
+                        if website_name == "falconebiz":
+                            falconebiz_content = content
+                            print(f"Stored falconebiz content, length: {len(content)}")
+                        markdown_content.append(content)
                     else:
-                        print(f"Item success attribute is False or missing")
+                        print("\nNo content found in the crawled page")
+                        
+                        # Save debug information
+                        debug_filename = f"debug/{company_name}_{website_name}_debug.txt"
+                        with open(debug_filename, "w", encoding="utf-8") as f:
+                            f.write(f"URL: {url}\n")
+                            f.write(f"Item type: {type(item)}\n")
+                            f.write(f"Item attributes: {dir(item)}\n")
+                            f.write(f"Item dict: {item.__dict__ if hasattr(item, '__dict__') else 'No __dict__'}\n")
+                            if hasattr(item, '_results'):
+                                f.write("\nResults:\n")
+                                for idx, result_item in enumerate(item._results):
+                                    f.write(f"\nResult {idx}:\n")
+                                    f.write(f"Type: {type(result_item)}\n")
+                                    f.write(f"Attributes: {dir(result_item)}\n")
+                                    f.write(f"Dict: {result_item.__dict__ if hasattr(result_item, '__dict__') else 'No __dict__'}\n")
+                    
+                    score = item.metadata.get("score", 0) if hasattr(item, 'metadata') else 0
+                    depth = item.metadata.get("depth", 0) if hasattr(item, 'metadata') else 0
+                    crawl_stats["scores"].append(score)
+                    crawl_stats["depth_counts"][depth] = crawl_stats["depth_counts"].get(depth, 0) + 1
+                    
+                    print(f"Depth: {depth} | Score: {score:.2f} | {url}")
                 else:
                     print(f"Crawl failed for {url}: No valid content extracted")
             except Exception as e:
