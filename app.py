@@ -125,9 +125,7 @@ def extract_expandable_sections(data):
     """Extract sections that should be displayed as expandable tables."""
     expandable_sections = {
         'Current Directors & Key Managerial Personnel': [],
-        'Subsidiary Companies': [],
-        'Group Companies': [],
-        'Joint Ventures': []
+        'Subsidiary Companies': []
     }
     
     main_data = data.copy()
@@ -139,6 +137,147 @@ def extract_expandable_sections(data):
             del main_data[section]
     
     return main_data, expandable_sections
+
+def organize_financial_data(data):
+    """Organize financial data into clear sections."""
+    if not data:
+        return {}, {}
+    
+    # Initialize sections
+    charge_details = {}
+    financial_metrics = {}
+    other_data = {}
+    
+    # Process each field
+    for key, value in data.items():
+        if key == 'charge_details_in_cr':
+            charge_details = value
+        elif key == 'financial_metrics_YoY_growth':
+            financial_metrics = value
+        else:
+            other_data[key] = value
+    
+    return {
+        'Charge Details': charge_details,
+        'Financial Metrics YoY': financial_metrics,
+        'Other Information': other_data
+    }
+
+def display_financial_data(data, section_name):
+    """Display financial data in organized sections."""
+    if not data:
+        return
+    
+    st.markdown(f"### {section_name}")
+    
+    # Organize financial data
+    organized_data = organize_financial_data(data)
+    
+    # Display Charge Details section
+    if organized_data['Charge Details']:
+        st.markdown("#### Charge Details")
+        charge_data = organized_data['Charge Details']
+        
+        # Extract charges breakdown
+        charges_breakdown = charge_data.pop('Charges Breakdown by Lending Institution', {})
+        
+        # Display main charge metrics
+        charge_df = pd.DataFrame({
+            'Metric': charge_data.keys(),
+            'Value': charge_data.values()
+        })
+        st.dataframe(
+            charge_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Metric": st.column_config.TextColumn(
+                    "Metric",
+                    width="medium",
+                    help="Charge metric"
+                ),
+                "Value": st.column_config.TextColumn(
+                    "Value",
+                    width="large",
+                    help="Metric value"
+                )
+            }
+        )
+        
+        # Display charges breakdown in expandable section
+        if charges_breakdown:
+            with st.expander("📊 Charges Breakdown by Lending Institution", expanded=True):
+                breakdown_df = pd.DataFrame({
+                    'Lender': charges_breakdown.keys(),
+                    'Amount': charges_breakdown.values()
+                })
+                st.dataframe(
+                    breakdown_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Lender": st.column_config.TextColumn(
+                            "Lender",
+                            width="medium",
+                            help="Lending institution"
+                        ),
+                        "Amount": st.column_config.TextColumn(
+                            "Amount",
+                            width="medium",
+                            help="Charge amount"
+                        )
+                    }
+                )
+    
+    # Display Financial Metrics YoY section
+    if organized_data['Financial Metrics YoY']:
+        st.markdown("#### Financial Metrics (YoY Growth)")
+        metrics_df = pd.DataFrame({
+            'Metric': organized_data['Financial Metrics YoY'].keys(),
+            'Growth': organized_data['Financial Metrics YoY'].values()
+        })
+        st.dataframe(
+            metrics_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Metric": st.column_config.TextColumn(
+                    "Metric",
+                    width="medium",
+                    help="Financial metric"
+                ),
+                "Growth": st.column_config.TextColumn(
+                    "Growth",
+                    width="medium",
+                    help="Year-over-Year growth"
+                )
+            }
+        )
+    
+    # Display other information
+    if organized_data['Other Information']:
+        st.markdown("#### Other Information")
+        other_df = pd.DataFrame({
+            'Field': organized_data['Other Information'].keys(),
+            'Value': organized_data['Other Information'].values()
+        })
+        st.dataframe(
+            other_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Field": st.column_config.TextColumn(
+                    "Field",
+                    width="medium",
+                    help="Information field"
+                ),
+                "Value": st.column_config.TextColumn(
+                    "Value",
+                    width="large",
+                    help="Field value"
+                )
+            }
+        )
 
 def display_nested_data(data, section_name):
     """Display data in a single, well-organized table with expandable sections."""
@@ -305,8 +444,8 @@ def main():
 
             with tab2:
                 if financial_data:
-                    # Display financial data in a single table with expandable sections
-                    display_nested_data(financial_data, "Financial Data")
+                    # Display financial data in organized sections
+                    display_financial_data(financial_data, "Financial Data")
                     # Download button for financial data
                     financial_df = convert_to_dataframe(financial_data)
                     csv = financial_df.to_csv(index=False)
