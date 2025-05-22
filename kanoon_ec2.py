@@ -23,6 +23,11 @@ from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
 import asyncio
 import re
 import random
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 # Hardcoded API keys for EC2
 GOOGLE_API_KEY = "AIzaSyBUGmHKTcSaCiltjx9VFnAJfGjPxiP9vlk"
@@ -94,6 +99,19 @@ gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 # Create required directories
 os.makedirs("legal_content", exist_ok=True)
+
+def setup_chrome_driver():
+    """
+    Set up and return an undetected Chrome driver instance.
+    """
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    
+    return uc.Chrome(options=options)
 
 def is_case_relevant(content: str, company_name: str) -> bool:
     """
@@ -311,38 +329,43 @@ async def search_kanoon_cases(company_name: str, max_results: int = 10, max_retr
                 print(f"Retrying in {delay:.1f} seconds...")
                 time.sleep(delay)
             
-            # Make the request with random headers
             print(f"Searching for cases related to: {company_name} (Attempt {attempt + 1}/{max_retries})")
-            headers = get_random_headers()
-            response = requests.get(search_url, headers=headers, timeout=30)
-            response.raise_for_status()
             
-            # Parse the HTML content
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Find all case links
-            case_urls = []
-            for link in soup.find_all('a', href=True):
-                href = link['href']
-                # Only include URLs that are actual case documents
-                if '/doc/' in href and '/undefined' not in href:
-                    full_url = f"https://indiankanoon.org{href}"
-                    if full_url not in case_urls:  # Avoid duplicates
-                        case_urls.append(full_url)
-                        print(f"Found case: {full_url}")
-                        
-                        # Break if we have enough results
-                        if len(case_urls) >= max_results:
-                            break
-            
-            if case_urls:
-                print(f"\nFound {len(case_urls)} case URLs")
-                return case_urls[:max_results]
-            else:
-                print("No case URLs found in the response")
+            # Use undetected-chromedriver
+            driver = setup_chrome_driver()
+            try:
+                driver.get(search_url)
                 
-        except requests.RequestException as e:
-            print(f"Error making request (Attempt {attempt + 1}/{max_retries}): {str(e)}")
+                # Wait for the search results to load
+                WebDriverWait(driver, 20).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/doc/']"))
+                )
+                
+                # Get all case links
+                case_urls = []
+                links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/doc/']")
+                
+                for link in links:
+                    href = link.get_attribute('href')
+                    if href and '/undefined' not in href:
+                        if href not in case_urls:  # Avoid duplicates
+                            case_urls.append(href)
+                            print(f"Found case: {href}")
+                            
+                            if len(case_urls) >= max_results:
+                                break
+                
+                if case_urls:
+                    print(f"\nFound {len(case_urls)} case URLs")
+                    return case_urls[:max_results]
+                else:
+                    print("No case URLs found in the response")
+                    
+            finally:
+                driver.quit()
+                
+        except TimeoutException:
+            print(f"Timeout waiting for search results (Attempt {attempt + 1}/{max_retries})")
             if attempt == max_retries - 1:
                 print("Max retries reached. Could not fetch case URLs.")
                 return []
