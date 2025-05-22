@@ -138,10 +138,13 @@ def extract_expandable_sections(data):
             del main_data[section]
     
     # Extract GST details from main data
-    gst_details = {}
+    gst_details = []
     for key, value in list(main_data.items()):
         if key.startswith('GST'):
-            gst_details[key] = value
+            if isinstance(value, list):
+                gst_details.extend(value)
+            else:
+                gst_details.append(value)
             del main_data[key]
     
     if gst_details:
@@ -347,24 +350,22 @@ def display_nested_data(data, section_name):
             if section_name == 'GST Details':
                 # Create expander for GST Details
                 with st.expander(f"📋 {section_name}", expanded=True):
-                    gst_df = pd.DataFrame({
-                        'GST Number': section_data.keys(),
-                        'Details': [convert_to_string(v) for v in section_data.values()]
-                    })
+                    # Convert list of dictionaries to DataFrame
+                    gst_df = pd.DataFrame(section_data)
                     st.dataframe(
                         gst_df,
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "GST Number": st.column_config.TextColumn(
-                                "GST Number",
+                            "State": st.column_config.TextColumn(
+                                "State",
                                 width="medium",
-                                help="GST registration number"
+                                help="State of GST registration"
                             ),
-                            "Details": st.column_config.TextColumn(
-                                "Details",
-                                width="large",
-                                help="GST registration details"
+                            "GSTIN": st.column_config.TextColumn(
+                                "GSTIN",
+                                width="medium",
+                                help="GST Identification Number"
                             )
                         }
                     )
