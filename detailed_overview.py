@@ -69,12 +69,14 @@ class CompanyOverviewGenerator:
             "Phone Number": "Not Found",
             "Fax Number": "Not Found",
             "website": "Not Found",
-            "LinkedIn Profile": "Not Found",
             
             # Address Information
             "Registered Address": "Not Found",
             "Corporate Address": "Not Found", 
             
+            # Directors & Key Personnel
+            "Current Directors & Key Managerial Personnel": [],
+            "Total Number of Directors": "Not Found",
             
             # Business Information
             "Sector": "Not Found",
@@ -89,10 +91,6 @@ class CompanyOverviewGenerator:
             "Authorised Share Capital": "Not Found",
             "Paid-up Share Capital": "Not Found",
             "Current Share Capital": "Not Found",
-            "Market Capitalization": "Not Found",
-            "Annual Turnover": "Not Found",
-            "Net Worth": "Not Found",
-            "Credit Rating": "Not Found",
             "Date of Last Filed Balance Sheet": "Not Found",
             "Financial Year End": "Not Found",
             
@@ -100,19 +98,12 @@ class CompanyOverviewGenerator:
             "Number of Shareholders": "Not Found",
             "Promoter Shareholding %": "Not Found",
             "Public Shareholding %": "Not Found",
-            "Foreign Investment %": "Not Found",
             
             # Subsidiary & Group Information
             "Parent Company": "Not Found",
-            "Subsidiary Companies": [],
-            "Group Companies": [],
-            "Joint Ventures": [],
+            "Subsidiary Companies": []
             
-            # Directors & Key Personnel
-            "Current Directors & Key Managerial Personnel": [],
-            "Total Number of Directors": "Not Found",
-            "Independent Directors": "Not Found",
-            "Women Directors": "Not Found"
+            
         }
 
     def parse_model_json(self, model_output: str) -> Dict[str, Any]:
@@ -258,13 +249,7 @@ The JSON must be valid and well-formatted. Double-check all syntax before respon
                 # Merge with default structure to ensure all fields are present
                 final_report = {**self.default_structure, **report}
                 
-                # Add metadata
-                final_report["_metadata"] = {
-                    "generated_at": datetime.now().isoformat(),
-                    "company_searched": company_name,
-                    "api_model": "gpt-4o-search-preview",
-                    "attempt_number": attempt + 1
-                }
+                
                 
                 logger.info(f"Successfully generated overview report for: {company_name}")
                 return final_report
