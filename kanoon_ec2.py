@@ -312,7 +312,12 @@ async def search_kanoon_cases(company_name: str, max_results: int = 10) -> list:
         
         print(f"\nFound {len(case_urls)} case URLs")
         return case_urls[:max_results]
-        
+        response = requests.get(search_url, headers=headers)
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response headers: {response.headers}")
+        logger.info(f"Response content: {response.text[:500]}")  # Log first 500 chars
+        response.raise_for_status()
+
     except requests.RequestException as e:
         print(f"Error making request: {str(e)}")
         return []
