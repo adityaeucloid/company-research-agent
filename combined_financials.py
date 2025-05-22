@@ -75,114 +75,6 @@ async def tavily_search_company(company_name: str, max_results: int = 1) -> list
         print(f"Tavily search failed for query '{query}': {e}")
         return []
 
-async def crawl_zaubacorp_for_cin(url: str, company_name: str) -> tuple[str, str]:
-    """
-    Crawl zaubacorp.com URL to extract CIN and save raw content.
-    Returns tuple of (cin_code, content)
-    """
-    browser_config = BrowserConfig(
-        headless=True,
-        browser_type="chromium",
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    )
-
-    filter_chain = FilterChain([
-        DomainFilter(
-            allowed_domains=["zaubacorp.com"],
-            blocked_domains=[]
-        ),
-        URLPatternFilter(
-            patterns=[url]
-        ),
-        ContentTypeFilter(allowed_types=["text/html"])
-    ])
-
-    run_config = CrawlerRunConfig(
-        deep_crawl_strategy=BestFirstCrawlingStrategy(
-            max_depth=0,
-            include_external=False,
-            max_pages=1,
-            filter_chain=filter_chain
-        ),
-        cache_mode='BYPASS',
-        verbose=True,
-        extraction_strategy=LLMExtractionStrategy(
-            extract_metadata=True,
-            extract_links=False
-        )
-    )
-
-    os.makedirs("financial_data", exist_ok=True)
-    os.makedirs("debug", exist_ok=True)
-
-    try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            print(f"\nStarting crawl for zaubacorp URL: {url}")
-            result = await crawler.arun(url=url, config=run_config)
-            
-            if isinstance(result, list) and result:
-                item = result[0]
-                print(f"\nItem type: {type(item)}")
-                
-                if hasattr(item, 'success'):
-                    print(f"Success status: {item.success}")
-                
-                content = None
-                
-                # Try multiple content attributes
-                content_attrs = [
-                    'html', 'cleaned_html', 'fit_html', 'extracted_content',
-                    'markdown', 'markdown_v2', 'fit_markdown'
-                ]
-                
-                for attr in content_attrs:
-                    if hasattr(item, '_results') and isinstance(item._results, list) and item._results:
-                        if hasattr(item._results[0], attr):
-                            content = getattr(item._results[0], attr)
-                            print(f"\nFound content in {attr}")
-                            print(f"Content length: {len(content) if content else 0}")
-                            if content:
-                                break
-                
-                if not content and hasattr(item, 'markdown'):
-                    if hasattr(item.markdown, 'fit_markdown'):
-                        content = item.markdown.fit_markdown
-                        print("\nExtracted content from fit_markdown")
-                    elif hasattr(item.markdown, 'content'):
-                        content = item.markdown.content
-                        print("\nExtracted content from markdown.content")
-                
-                if content:
-                    print(f"\nFinal content length: {len(content)}")
-                    
-                    # Save raw content for debugging
-                    debug_filename = f"debug/{company_name}_zaubacorp_raw.txt"
-                    with open(debug_filename, "w", encoding="utf-8") as f:
-                        f.write(f"URL: {url}\n")
-                        f.write(f"Content length: {len(content)}\n")
-                        f.write(f"Content type: {type(content)}\n")
-                        f.write("\nContent:\n")
-                        f.write(content)
-                    
-                    # Save processed content
-                    filename = f"financial_data/{company_name}_zaubacorp.txt"
-                    with open(filename, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    print(f"Saved content to {filename}")
-                    
-                    cin_code = extract_cin_from_url(url)
-                    return cin_code, content
-                else:
-                    print("\nNo content found in the crawled page")
-            else:
-                print(f"Failed to process zaubacorp URL: {url}")
-                return "", ""
-    except Exception as e:
-        print(f"Error crawling zaubacorp URL {url}: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return "", ""
-
 async def crawl_companycheck_data(url: str, company_name: str) -> str:
     """
     Crawl thecompanycheck.com URL and return concatenated markdown content.
@@ -236,6 +128,7 @@ async def crawl_companycheck_data(url: str, company_name: str) -> str:
 
     os.makedirs("financial_data", exist_ok=True)
     structured_filename = f"financial_data/{company_name}_thecompanycheck_structured.txt"
+    raw_filename = f"financial_data/{company_name}_thecompanycheck_raw.html"
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         try:
@@ -276,6 +169,11 @@ async def crawl_companycheck_data(url: str, company_name: str) -> str:
                 
                 if content:
                     print(f"\nFinal content length: {len(content)}")
+                    
+                    # Save raw content
+                    with open(raw_filename, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    print(f"Saved raw content to {raw_filename}")
                     
                     soup = BeautifulSoup(content, 'html.parser')
                     extracted_data = []
@@ -436,7 +334,7 @@ def extract_financial_metrics(text: str, company_name: str):
 
 async def main():
     """
-    Main function to extract CIN from zaubacorp.com, crawl thecompanycheck.com, and extract financial metrics.
+    Main function to extract CIN from zaubacorp URL, crawl thecompanycheck.com, and extract financial metrics.
     """
     max_results = 1
 
@@ -446,8 +344,8 @@ async def main():
         print("No zaubacorp URL found for the company")
         return
 
-    # Step 2: Crawl zaubacorp.com to get CIN and save raw content
-    cin_code, zaubacorp_content = await crawl_zaubacorp_for_cin(zaubacorp_urls[0], COMPANY_NAME)
+    # Step 2: Extract CIN from zaubacorp URL
+    cin_code = extract_cin_from_url(zaubacorp_urls[0])
     if not cin_code:
         print("No CIN code extracted from zaubacorp URL")
         return
