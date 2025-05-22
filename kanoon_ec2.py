@@ -22,26 +22,11 @@ from crawl4ai.deep_crawling.filters import (
 from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
 import asyncio
 import re
-import random
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 # Hardcoded API keys for EC2
 GOOGLE_API_KEY = "AIzaSyBUGmHKTcSaCiltjx9VFnAJfGjPxiP9vlk"
 OPENAI_API_KEY = "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"
 TAVILY_API_KEY = "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"
-
-# List of common User-Agents
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0'
-]
 
 def check_ec2_requirements():
     """
@@ -99,19 +84,6 @@ gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 # Create required directories
 os.makedirs("legal_content", exist_ok=True)
-
-def setup_chrome_driver():
-    """
-    Set up and return an undetected Chrome driver instance.
-    """
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    
-    return uc.Chrome(options=options)
 
 def is_case_relevant(content: str, company_name: str) -> bool:
     """
@@ -295,25 +267,7 @@ class LegalCaseExtractor:
             logger.error(f"Error extracting case data: {str(e)}")
             raise
 
-def get_random_headers():
-    """
-    Generate random headers for requests to avoid detection.
-    """
-    return {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0'
-    }
-
-async def search_kanoon_cases(company_name: str, max_results: int = 10, max_retries: int = 3) -> list:
+async def search_kanoon_cases(company_name: str, max_results: int = 10) -> list:
     """
     Search IndianKanoon for legal cases related to a company and return the URLs.
     """
@@ -321,61 +275,50 @@ async def search_kanoon_cases(company_name: str, max_results: int = 10, max_retr
     encoded_company = quote(company_name)
     search_url = f"https://indiankanoon.org/search/?formInput={encoded_company}"
     
-    for attempt in range(max_retries):
-        try:
-            # Add random delay between attempts
-            if attempt > 0:
-                delay = random.uniform(2, 5)
-                print(f"Retrying in {delay:.1f} seconds...")
-                time.sleep(delay)
-            
-            print(f"Searching for cases related to: {company_name} (Attempt {attempt + 1}/{max_retries})")
-            
-            # Use undetected-chromedriver
-            driver = setup_chrome_driver()
-            try:
-                driver.get(search_url)
-                
-                # Wait for the search results to load
-                WebDriverWait(driver, 20).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/doc/']"))
-                )
-                
-                # Get all case links
-                case_urls = []
-                links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/doc/']")
-                
-                for link in links:
-                    href = link.get_attribute('href')
-                    if href and '/undefined' not in href:
-                        if href not in case_urls:  # Avoid duplicates
-                            case_urls.append(href)
-                            print(f"Found case: {href}")
-                            
-                            if len(case_urls) >= max_results:
-                                break
-                
-                if case_urls:
-                    print(f"\nFound {len(case_urls)} case URLs")
-                    return case_urls[:max_results]
-                else:
-                    print("No case URLs found in the response")
-                    
-            finally:
-                driver.quit()
-                
-        except TimeoutException:
-            print(f"Timeout waiting for search results (Attempt {attempt + 1}/{max_retries})")
-            if attempt == max_retries - 1:
-                print("Max retries reached. Could not fetch case URLs.")
-                return []
-        except Exception as e:
-            print(f"Error processing results (Attempt {attempt + 1}/{max_retries}): {str(e)}")
-            if attempt == max_retries - 1:
-                print("Max retries reached. Could not process results.")
-                return []
+    # Headers to mimic a browser request
+    headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': 'https://indiankanoon.org/',
+    }
     
-    return []
+    try:
+        # Make the request
+        print(f"Searching for cases related to: {company_name}")
+        response = requests.get(search_url, headers=headers)
+        response.raise_for_status()
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find all case links
+        case_urls = []
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            # Only include URLs that are actual case documents
+            if '/doc/' in href and '/undefined' not in href:
+                full_url = f"https://indiankanoon.org{href}"
+                if full_url not in case_urls:  # Avoid duplicates
+                    case_urls.append(full_url)
+                    print(f"Found case: {full_url}")
+                    
+                    # Break if we have enough results
+                    if len(case_urls) >= max_results:
+                        break
+        
+        print(f"\nFound {len(case_urls)} case URLs")
+        return case_urls[:max_results]
+        
+    except requests.RequestException as e:
+        print(f"Error making request: {str(e)}")
+        return []
+    except Exception as e:
+        print(f"Error processing results: {str(e)}")
+        return []
 
 async def crawl_single_url(url: str, company_name: str, crawler: AsyncWebCrawler) -> Optional[str]:
     """
