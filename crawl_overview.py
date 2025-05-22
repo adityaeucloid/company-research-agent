@@ -2,7 +2,6 @@ import asyncio
 import os
 import json
 import re
-import logging
 from urllib.parse import urlparse
 from tavily import TavilyClient
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
@@ -21,17 +20,6 @@ from crawl4ai.content_filter_strategy import PruningContentFilter
 from pydantic import BaseModel
 from json import JSONDecoder, JSONDecodeError
 from dotenv import load_dotenv
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('crawler.log')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -135,14 +123,12 @@ async def crawl_zaubacorp_data(url: str, company_name: str) -> tuple[str, str]:
     """
     Crawl zaubacorp.com URL specifically and return both content and CIN.
     """
-    logger.info(f"Starting zaubacorp crawl for URL: {url}")
-    
     browser_config = BrowserConfig(
         headless=True,
-        browser_type="chromium",
-        timeout=30000  # 30 seconds timeout
+        browser_type="chromium"
     )
 
+    # Simpler filter chain for zaubacorp
     filter_chain = FilterChain([
         DomainFilter(
             allowed_domains=["zaubacorp.com"],
@@ -153,52 +139,46 @@ async def crawl_zaubacorp_data(url: str, company_name: str) -> tuple[str, str]:
 
     run_config = CrawlerRunConfig(
         deep_crawl_strategy=BestFirstCrawlingStrategy(
-            max_depth=0,
+            max_depth=0,  # Don't follow links
             include_external=False,
             max_pages=1,
             filter_chain=filter_chain
         ),
         excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
         cache_mode='BYPASS',
-        verbose=True,
-        timeout=30000  # 30 seconds timeout
+        verbose=True
     )
 
     try:
-        logger.info("Initializing AsyncWebCrawler")
         async with AsyncWebCrawler(config=browser_config) as crawler:
-            logger.info("Starting crawl")
             result = await crawler.arun(url=url, config=run_config)
-            logger.info(f"Crawl completed. Result type: {type(result)}")
             
             if isinstance(result, list) and result:
                 item = result[0]
-                logger.info(f"Processing item. Type: {type(item)}")
                 
                 # Try to get content from different possible attributes
                 content = ""
-                content_sources = [
-                    ('content', getattr(item, 'content', None)),
-                    ('markdown.fit_markdown', getattr(getattr(item, 'markdown', None), 'fit_markdown', None)),
-                    ('markdown.content', getattr(getattr(item, 'markdown', None), 'content', None)),
-                    ('text', getattr(item, 'text', None)),
-                    ('html', getattr(item, 'html', None)),
-                    ('raw_content', getattr(item, 'raw_content', None)),
-                    ('raw_html', getattr(item, 'raw_html', None))
-                ]
-                
-                for source_name, source_content in content_sources:
-                    if source_content:
-                        content = source_content
-                        logger.info(f"Found content in {source_name}")
-                        break
+                if hasattr(item, 'content'):
+                    content = item.content
+                elif hasattr(item, 'markdown'):
+                    if hasattr(item.markdown, 'fit_markdown'):
+                        content = item.markdown.fit_markdown
+                    elif hasattr(item.markdown, 'content'):
+                        content = item.markdown.content
+                elif hasattr(item, 'text'):
+                    content = item.text
+                elif hasattr(item, 'html'):
+                    content = item.html
+                elif hasattr(item, 'raw_content'):
+                    content = item.raw_content
+                elif hasattr(item, 'raw_html'):
+                    content = item.raw_html
                 
                 if not content and hasattr(item, '__dict__'):
-                    logger.info("Trying to find content in item attributes")
+                    # Try to get content from any string attribute
                     for attr_name, attr_value in item.__dict__.items():
-                        if isinstance(attr_value, str) and len(attr_value) > 100:
+                        if isinstance(attr_value, str) and len(attr_value) > 100:  # Likely to be content
                             content = attr_value
-                            logger.info(f"Found content in attribute: {attr_name}")
                             break
                 
                 if content:
@@ -207,19 +187,16 @@ async def crawl_zaubacorp_data(url: str, company_name: str) -> tuple[str, str]:
                     filename = f"crawled_content/{company_name}_zaubacorp.txt"
                     with open(filename, "w", encoding="utf-8") as f:
                         f.write(content)
-                    logger.info(f"Saved zaubacorp content to {filename}")
+                    print(f"Saved zaubacorp content to {filename}")
                     
                     # Extract CIN
                     cin_code = extract_cin_from_url(url)
-                    logger.info(f"Extracted CIN: {cin_code}")
                     return content, cin_code
-                else:
-                    logger.warning("No content found in any attribute")
             
-            logger.warning(f"Failed to extract content from zaubacorp URL: {url}")
+            print(f"Failed to extract content from zaubacorp URL: {url}")
             return "", ""
     except Exception as e:
-        logger.error(f"Error crawling zaubacorp URL {url}: {str(e)}", exc_info=True)
+        print(f"Error crawling zaubacorp URL {url}: {str(e)}")
         return "", ""
 
 async def tavily_search_company(company_name: str, max_results: int = 10) -> list[str]:
@@ -299,20 +276,19 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
     """
     Crawl the provided URLs using advanced crawling techniques and return concatenated markdown content.
     """
-    logger.info(f"Starting company data crawl for {len(urls)} URLs")
-    
     browser_config = BrowserConfig(
         headless=True,
-        browser_type="chromium",
-        timeout=30000  # 30 seconds timeout
+        browser_type="chromium"
     )
 
     # Create a sophisticated filter chain
     filter_chain = FilterChain([
+        # Domain boundaries - focus on trusted financial and company data sources
         DomainFilter(
             allowed_domains=["zaubacorp.com", "indiafilings.com", "falconebiz.com"],
             blocked_domains=["linkedin.com", "facebook.com", "twitter.com"]
         ),
+        # URL patterns to include and exclude
         URLPatternFilter(
             patterns=[
                 r"https://.*",
@@ -324,24 +300,36 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
                 r"*details*"
             ]
         ),
+        # Content type filtering
         ContentTypeFilter(allowed_types=["text/html"]),
+        # Content relevance filter
         ContentRelevanceFilter(
             query=f"financial data {company_name}",
             threshold=0.7
         )
     ])
 
+    # Create a relevance scorer for company-specific content
+    keyword_scorer = KeywordRelevanceScorer(
+        keywords=[
+            "company", "financial", "directors", "cin", "incorporation",
+            "capital", "balance sheet", "annual report", "registration",
+            "roc", "status", "address", "email", company_name.lower()
+        ],
+        weight=0.8  # Increased weight for better relevance scoring
+    )
+
     run_config = CrawlerRunConfig(
         deep_crawl_strategy=BestFirstCrawlingStrategy(
             max_depth=max_depth,
             include_external=False,
             max_pages=max_pages,
-            filter_chain=filter_chain
+            filter_chain=filter_chain,
+            url_scorer=keyword_scorer
         ),
         excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
         cache_mode='BYPASS',
-        verbose=True,
-        timeout=30000  # 30 seconds timeout
+        verbose=True
     )
 
     markdown_content = []
@@ -353,122 +341,96 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
         "scores": []
     }
 
+    # Create a directory for crawled content if it doesn't exist
     os.makedirs("crawled_content", exist_ok=True)
 
-    try:
-        logger.info("Initializing AsyncWebCrawler")
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            for url in urls:
-                try:
-                    logger.info(f"Processing URL: {url}")
-                    
-                    if "falconebiz.com" in url:
-                        is_valid, cin_code = validate_falconebiz_url(url, company_name)
-                        if not is_valid:
-                            logger.warning(f"Skipping invalid falconebiz URL: {url}")
-                            continue
-                        logger.info(f"Validated falconebiz URL with CIN {cin_code}: {url}")
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        for url in urls:
+            try:
+                # For falconebiz, validate URL format
+                if "falconebiz.com" in url:
+                    is_valid, cin_code = validate_falconebiz_url(url, company_name)
+                    if not is_valid:
+                        print(f"Skipping invalid falconebiz URL: {url}")
+                        continue
+                    print(f"Validated falconebiz URL with CIN {cin_code}: {url}")
 
-                    logger.info("Starting crawl")
-                    result = await crawler.arun(url=url, config=run_config)
-                    logger.info(f"Crawl completed. Result type: {type(result)}")
-                    
-                    crawl_stats["total_pages"] += 1
-                    
-                    parsed_url = urlparse(url)
-                    website_name = parsed_url.netloc.replace("www.", "").split(".")[0]
-                    
-                    if isinstance(result, list) and result:
-                        item = result[0]
-                        logger.info(f"Processing item. Type: {type(item)}")
-                        
-                        if hasattr(item, 'success') and item.success:
-                            crawl_stats["successful_pages"] += 1
-                            
-                            content = None
-                            if hasattr(item, 'markdown'):
+                result = await crawler.arun(url=url, config=run_config)
+                crawl_stats["total_pages"] += 1
+                
+                # Get website name from URL
+                parsed_url = urlparse(url)
+                website_name = parsed_url.netloc.replace("www.", "").split(".")[0]
+                
+                # Handle the result based on its type
+                if isinstance(result, list) and result:
+                    # Save only the first item
+                    item = result[0]
+                    if hasattr(item, 'success') and item.success:
+                        crawl_stats["successful_pages"] += 1
+                        if hasattr(item, 'markdown') and item.markdown:
+                            # Save markdown content with specific naming
+                            filename = f"crawled_content/{company_name}_{website_name}.txt"
+                            with open(filename, "w", encoding="utf-8") as f:
+                                f.write(f"Item type: {type(item)}\n")
+                                f.write(f"Item dir: {dir(item)}\n")
+                                f.write(f"Item dict: {item.__dict__ if hasattr(item, '__dict__') else 'No __dict__'}\n")
                                 if hasattr(item.markdown, 'fit_markdown'):
-                                    content = item.markdown.fit_markdown
-                                    logger.info("Found content in markdown.fit_markdown")
-                                elif hasattr(item.markdown, 'content'):
-                                    content = item.markdown.content
-                                    logger.info("Found content in markdown.content")
+                                    f.write(f"\nFit markdown content:\n{item.markdown.fit_markdown}\n")
+                                    markdown_content.append(item.markdown.fit_markdown)
+                                if hasattr(item.markdown, 'content'):
+                                    f.write(f"\nContent:\n{item.markdown.content}\n")
+                                    markdown_content.append(item.markdown.content)
                             
-                            if content:
-                                filename = f"crawled_content/{company_name}_{website_name}.txt"
-                                with open(filename, "w", encoding="utf-8") as f:
-                                    f.write(content)
-                                logger.info(f"Saved content to {filename}")
-                                markdown_content.append(content)
-                                
-                                score = item.metadata.get("score", 0) if hasattr(item, 'metadata') else 0
-                                depth = item.metadata.get("depth", 0) if hasattr(item, 'metadata') else 0
-                                crawl_stats["scores"].append(score)
-                                crawl_stats["depth_counts"][depth] = crawl_stats["depth_counts"].get(depth, 0) + 1
-                                
-                                logger.info(f"Depth: {depth} | Score: {score:.2f} | {url}")
-                            else:
-                                logger.warning(f"No content found for {url}")
-                        else:
-                            logger.warning(f"Crawl not successful for {url}")
-                    else:
-                        logger.warning(f"No results returned for {url}")
-                        
-                except Exception as e:
-                    logger.error(f"Error processing URL {url}: {str(e)}", exc_info=True)
-                    continue
-
-    except Exception as e:
-        logger.error(f"Error in crawl_company_data: {str(e)}", exc_info=True)
-        return ""
+                            # Track metadata
+                            score = item.metadata.get("score", 0) if hasattr(item, 'metadata') else 0
+                            depth = item.metadata.get("depth", 0) if hasattr(item, 'metadata') else 0
+                            crawl_stats["scores"].append(score)
+                            crawl_stats["depth_counts"][depth] = crawl_stats["depth_counts"].get(depth, 0) + 1
+                            
+                            print(f"Depth: {depth} | Score: {score:.2f} | {url}")
+                else:
+                    print(f"Crawl failed for {url}: No valid content extracted")
+            except Exception as e:
+                print(f"Error crawling {url}: {str(e)}")
 
     # Print crawl statistics
-    logger.info("\nCrawl Statistics:")
-    logger.info(f"Total pages attempted: {crawl_stats['total_pages']}")
-    logger.info(f"Successfully crawled: {crawl_stats['successful_pages']}")
-    if crawl_stats["scores"]:
-        logger.info(f"Average relevance score: {sum(crawl_stats['scores']) / len(crawl_stats['scores']):.2f}")
-    logger.info("\nPages crawled by depth:")
-    for depth, count in sorted(crawl_stats["depth_counts"].items()):
-        logger.info(f"  Depth {depth}: {count} pages")
+    if crawl_stats["total_pages"] > 0:
+        print("\nCrawl Statistics:")
+        print(f"Total pages attempted: {crawl_stats['total_pages']}")
+        print(f"Successfully crawled: {crawl_stats['successful_pages']}")
+        if crawl_stats["scores"]:
+            print(f"Average relevance score: {sum(crawl_stats['scores']) / len(crawl_stats['scores']):.2f}")
+        print("\nPages crawled by depth:")
+        for depth, count in sorted(crawl_stats["depth_counts"].items()):
+            print(f"  Depth {depth}: {count} pages")
 
     if not markdown_content:
-        logger.warning("No content crawled from provided URLs")
+        print("No content crawled from provided URLs")
         return ""
         
     return "\n\n".join(markdown_content)
 
-async def main(company_name: str):
+async def main():
     """
     Main function to run the company data crawler.
     """
-    logger.info(f"Starting main pipeline for company: {company_name}")
-    
+    company_name = "VALUE POINT SYSTEMS PRIVATE LIMITED"
     max_results = 10
     max_pages = 10
     max_depth = 2
 
-    try:
-        # Perform Tavily search
-        logger.info("Starting Tavily search")
-        urls = await tavily_search_company(company_name, max_results)
-        if not urls:
-            logger.warning("No relevant URLs found from Tavily search")
-            return
+    # Perform Tavily search
+    urls = await tavily_search_company(company_name, max_results)
+    if not urls:
+        print("No relevant URLs found from Tavily search")
+        return
 
-        # Crawl the URLs
-        logger.info("Starting URL crawling")
-        crawled_content = await crawl_company_data(urls, company_name, max_pages, max_depth)
-        if not crawled_content:
-            logger.warning("No content crawled from provided URLs")
-            return
-            
-        logger.info("Pipeline completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Error in main pipeline: {str(e)}", exc_info=True)
+    # Crawl the URLs
+    crawled_content = await crawl_company_data(urls, company_name, max_pages, max_depth)
+    if not crawled_content:
+        print("No content crawled from provided URLs")
+        return
 
 if __name__ == "__main__":
-    # For testing purposes
-    test_company = "VALUE POINT SYSTEMS PRIVATE LIMITED"
-    asyncio.run(main(test_company))
+    asyncio.run(main())

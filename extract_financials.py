@@ -4,6 +4,9 @@ import google.generativeai as genai
 import re
 import json
 
+# Hardcoded file path
+FILE_PATH = r"C:\Codes\company-research-agent\financial_data\VALUE POINT SYSTEMS PRIVATE LIMITED_thecompanycheck_structured.txt"
+
 # Load environment variables from .env file
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
@@ -12,12 +15,11 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
-def read_file(company_name: str):
+def read_file(file_path):
     """
     Read the content of the file at the given path.
     Returns the text content or raises an error if the file cannot be read.
     """
-    file_path = f"financial_data/{company_name}_thecompanycheck_structured.txt"
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             return file.read()
@@ -107,10 +109,10 @@ def extract_financial_metrics(text):
         print(f"Error processing with Gemini API: {e}")
         return {}
 
-def main(company_name: str):
+def main():
     # Read the file
     try:
-        scraped_text = read_file(company_name)
+        scraped_text = read_file(FILE_PATH)
     except Exception:
         return
 
@@ -121,7 +123,7 @@ def main(company_name: str):
     if extracted_data:
         print(json.dumps(extracted_data, indent=4))
         # Save the extracted data to a JSON file
-        output_file = f"financial_data/{company_name}_extracted_financial_data.json"
+        output_file = "extracted_financial_data.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(extracted_data, f, indent=4, ensure_ascii=False)
         print(f"Extracted financial data saved to {output_file}")
@@ -129,6 +131,4 @@ def main(company_name: str):
         print("Failed to extract financial metrics and charge details.")
 
 if __name__ == "__main__":
-    # For testing purposes
-    test_company = "VALUE POINT SYSTEMS PRIVATE LIMITED"
-    main(test_company)
+    main()
