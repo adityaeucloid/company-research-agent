@@ -120,7 +120,7 @@ async def crawl_companycheck_data(url: str, company_name: str) -> str:
     Crawl thecompanycheck.com URL and return concatenated markdown content.
     """
     browser_config = BrowserConfig(
-        headless=False,
+        headless=True,
         browser_type="chromium",
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     )
