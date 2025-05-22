@@ -163,6 +163,17 @@ def organize_financial_data(data):
         'Other Information': other_data
     }
 
+def convert_to_string(value):
+    """Convert any value to string format."""
+    if isinstance(value, (int, float)):
+        return f"{value:,.2f}"
+    elif isinstance(value, dict):
+        return json.dumps(value, indent=2)
+    elif isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    else:
+        return str(value)
+
 def display_financial_data(data, section_name):
     """Display financial data in organized sections."""
     if not data:
@@ -184,7 +195,7 @@ def display_financial_data(data, section_name):
         # Display main charge metrics
         charge_df = pd.DataFrame({
             'Metric': charge_data.keys(),
-            'Value': charge_data.values()
+            'Value': [convert_to_string(v) for v in charge_data.values()]
         })
         st.dataframe(
             charge_df,
@@ -209,7 +220,7 @@ def display_financial_data(data, section_name):
             with st.expander("📊 Charges Breakdown by Lending Institution", expanded=True):
                 breakdown_df = pd.DataFrame({
                     'Lender': charges_breakdown.keys(),
-                    'Amount': charges_breakdown.values()
+                    'Amount': [convert_to_string(v) for v in charges_breakdown.values()]
                 })
                 st.dataframe(
                     breakdown_df,
@@ -234,7 +245,7 @@ def display_financial_data(data, section_name):
         st.markdown("#### Financial Metrics (YoY Growth)")
         metrics_df = pd.DataFrame({
             'Metric': organized_data['Financial Metrics YoY'].keys(),
-            'Growth': organized_data['Financial Metrics YoY'].values()
+            'Growth': [convert_to_string(v) for v in organized_data['Financial Metrics YoY'].values()]
         })
         st.dataframe(
             metrics_df,
@@ -259,7 +270,7 @@ def display_financial_data(data, section_name):
         st.markdown("#### Other Information")
         other_df = pd.DataFrame({
             'Field': organized_data['Other Information'].keys(),
-            'Value': organized_data['Other Information'].values()
+            'Value': [convert_to_string(v) for v in organized_data['Other Information'].values()]
         })
         st.dataframe(
             other_df,
@@ -290,10 +301,10 @@ def display_nested_data(data, section_name):
     # Flatten the main data
     flat_data = flatten_dict(main_data)
     
-    # Convert to DataFrame
+    # Convert to DataFrame with string values
     df = pd.DataFrame({
         'Field': flat_data.keys(),
-        'Value': flat_data.values()
+        'Value': [convert_to_string(v) for v in flat_data.values()]
     })
     
     # Sort fields for better organization
@@ -325,8 +336,11 @@ def display_nested_data(data, section_name):
             if isinstance(section_data, list) and all(isinstance(item, dict) for item in section_data):
                 # Create expander for the section
                 with st.expander(f"📋 {section_name}", expanded=True):
-                    # Convert list of dictionaries to DataFrame
-                    df = pd.DataFrame(section_data)
+                    # Convert list of dictionaries to DataFrame with string values
+                    df = pd.DataFrame([
+                        {k: convert_to_string(v) for k, v in item.items()}
+                        for item in section_data
+                    ])
                     st.dataframe(
                         df,
                         use_container_width=True,
