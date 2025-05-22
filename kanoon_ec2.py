@@ -22,11 +22,21 @@ from crawl4ai.deep_crawling.filters import (
 from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
 import asyncio
 import re
+import random
 
 # Hardcoded API keys for EC2
 GOOGLE_API_KEY = "AIzaSyBUGmHKTcSaCiltjx9VFnAJfGjPxiP9vlk"
 OPENAI_API_KEY = "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"
 TAVILY_API_KEY = "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"
+
+# List of common User-Agents
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0'
+]
 
 def check_ec2_requirements():
     """
@@ -267,7 +277,25 @@ class LegalCaseExtractor:
             logger.error(f"Error extracting case data: {str(e)}")
             raise
 
-async def search_kanoon_cases(company_name: str, max_results: int = 10) -> list:
+def get_random_headers():
+    """
+    Generate random headers for requests to avoid detection.
+    """
+    return {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+    }
+
+async def search_kanoon_cases(company_name: str, max_results: int = 10, max_retries: int = 3) -> list:
     """
     Search IndianKanoon for legal cases related to a company and return the URLs.
     """
@@ -275,44 +303,56 @@ async def search_kanoon_cases(company_name: str, max_results: int = 10) -> list:
     encoded_company = quote(company_name)
     search_url = f"https://indiankanoon.org/search/?formInput={encoded_company}"
     
-    # Headers to mimic a browser request
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    for attempt in range(max_retries):
+        try:
+            # Add random delay between attempts
+            if attempt > 0:
+                delay = random.uniform(2, 5)
+                print(f"Retrying in {delay:.1f} seconds...")
+                time.sleep(delay)
+            
+            # Make the request with random headers
+            print(f"Searching for cases related to: {company_name} (Attempt {attempt + 1}/{max_retries})")
+            headers = get_random_headers()
+            response = requests.get(search_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            # Parse the HTML content
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all case links
+            case_urls = []
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                # Only include URLs that are actual case documents
+                if '/doc/' in href and '/undefined' not in href:
+                    full_url = f"https://indiankanoon.org{href}"
+                    if full_url not in case_urls:  # Avoid duplicates
+                        case_urls.append(full_url)
+                        print(f"Found case: {full_url}")
+                        
+                        # Break if we have enough results
+                        if len(case_urls) >= max_results:
+                            break
+            
+            if case_urls:
+                print(f"\nFound {len(case_urls)} case URLs")
+                return case_urls[:max_results]
+            else:
+                print("No case URLs found in the response")
+                
+        except requests.RequestException as e:
+            print(f"Error making request (Attempt {attempt + 1}/{max_retries}): {str(e)}")
+            if attempt == max_retries - 1:
+                print("Max retries reached. Could not fetch case URLs.")
+                return []
+        except Exception as e:
+            print(f"Error processing results (Attempt {attempt + 1}/{max_retries}): {str(e)}")
+            if attempt == max_retries - 1:
+                print("Max retries reached. Could not process results.")
+                return []
     
-    try:
-        # Make the request
-        print(f"Searching for cases related to: {company_name}")
-        response = requests.get(search_url, headers=headers)
-        response.raise_for_status()
-        
-        # Parse the HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Find all case links
-        case_urls = []
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            # Only include URLs that are actual case documents
-            if '/doc/' in href and '/undefined' not in href:
-                full_url = f"https://indiankanoon.org{href}"
-                if full_url not in case_urls:  # Avoid duplicates
-                    case_urls.append(full_url)
-                    print(f"Found case: {full_url}")
-                    
-                    # Break if we have enough results
-                    if len(case_urls) >= max_results:
-                        break
-        
-        print(f"\nFound {len(case_urls)} case URLs")
-        return case_urls[:max_results]
-        
-    except requests.RequestException as e:
-        print(f"Error making request: {str(e)}")
-        return []
-    except Exception as e:
-        print(f"Error processing results: {str(e)}")
-        return []
+    return []
 
 async def crawl_single_url(url: str, company_name: str, crawler: AsyncWebCrawler) -> Optional[str]:
     """
