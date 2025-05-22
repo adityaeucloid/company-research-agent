@@ -125,7 +125,8 @@ def extract_expandable_sections(data):
     """Extract sections that should be displayed as expandable tables."""
     expandable_sections = {
         'Current Directors & Key Managerial Personnel': [],
-        'Subsidiary Companies': []
+        'Subsidiary Companies': [],
+        'GST Details': []
     }
     
     main_data = data.copy()
@@ -135,6 +136,16 @@ def extract_expandable_sections(data):
         if section in data:
             expandable_sections[section] = data[section]
             del main_data[section]
+    
+    # Extract GST details from main data
+    gst_details = {}
+    for key, value in list(main_data.items()):
+        if key.startswith('GST'):
+            gst_details[key] = value
+            del main_data[key]
+    
+    if gst_details:
+        expandable_sections['GST Details'] = gst_details
     
     return main_data, expandable_sections
 
@@ -333,8 +344,32 @@ def display_nested_data(data, section_name):
     # Display expandable sections
     for section_name, section_data in expandable_sections.items():
         if section_data:
-            if isinstance(section_data, list) and all(isinstance(item, dict) for item in section_data):
-                # Create expander for the section
+            if section_name == 'GST Details':
+                # Create expander for GST Details
+                with st.expander(f"📋 {section_name}", expanded=True):
+                    gst_df = pd.DataFrame({
+                        'GST Number': section_data.keys(),
+                        'Details': [convert_to_string(v) for v in section_data.values()]
+                    })
+                    st.dataframe(
+                        gst_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "GST Number": st.column_config.TextColumn(
+                                "GST Number",
+                                width="medium",
+                                help="GST registration number"
+                            ),
+                            "Details": st.column_config.TextColumn(
+                                "Details",
+                                width="large",
+                                help="GST registration details"
+                            )
+                        }
+                    )
+            elif isinstance(section_data, list) and all(isinstance(item, dict) for item in section_data):
+                # Create expander for other sections
                 with st.expander(f"📋 {section_name}", expanded=True):
                     # Convert list of dictionaries to DataFrame with string values
                     df = pd.DataFrame([
