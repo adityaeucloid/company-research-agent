@@ -277,96 +277,72 @@ async def search_kanoon_cases(company_name: str, max_results: int = 10) -> list:
     
     print(f"Searching for cases related to: {company_name}")
     
-    # Create browser config
-    browser_config = BrowserConfig(
-        headless=True,
-        browser_type="chromium"
-    )
+    # Create a session to maintain cookies
+    session = requests.Session()
     
-    # Create filter chain for search results
-    filter_chain = FilterChain([
-        DomainFilter(
-            allowed_domains=["indiankanoon.org"],
-            blocked_domains=[]
-        ),
-        URLPatternFilter(
-            patterns=[
-                r"https://.*",
-                r"*doc*"
-            ]
-        ),
-        ContentTypeFilter(allowed_types=["text/html"])
-    ])
-    
-    # Create relevance scorer
-    keyword_scorer = KeywordRelevanceScorer(
-        keywords=[
-            "court", "tribunal", "judgment", "order", "case", "appeal",
-            "petition", "respondent", "appellant", "disposed", "dismissed",
-            company_name.lower()
-        ],
-        weight=0.8
-    )
-    
-    run_config = CrawlerRunConfig(
-        deep_crawl_strategy=BestFirstCrawlingStrategy(
-            max_depth=1,
-            include_external=False,
-            max_pages=1,
-            filter_chain=filter_chain,
-            url_scorer=keyword_scorer
-        ),
-        excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
-        cache_mode='BYPASS',
-        verbose=True
-    )
+    # Set up headers to mimic a real browser
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+        'Referer': 'https://indiankanoon.org/',
+        'DNT': '1',
+        'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"'
+    }
     
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            result = await crawler.arun(url=search_url, config=run_config)
-            
-            if isinstance(result, list) and result:
-                case_urls = []
-                for item in result:
-                    if hasattr(item, 'success') and item.success:
-                        if hasattr(item, '_results'):
-                            results = item._results
-                            if results and len(results) > 0:
-                                first_result = results[0]
-                                
-                                # Get the HTML content
-                                if hasattr(first_result, 'raw_html'):
-                                    html_content = first_result.raw_html
-                                elif hasattr(first_result, 'content'):
-                                    html_content = first_result.content
-                                else:
-                                    continue
-                                
-                                # Parse the HTML content
-                                soup = BeautifulSoup(html_content, 'html.parser')
-                                
-                                # Find all case links
-                                for link in soup.find_all('a', href=True):
-                                    href = link['href']
-                                    # Only include URLs that are actual case documents
-                                    if '/doc/' in href and '/undefined' not in href:
-                                        full_url = f"https://indiankanoon.org{href}"
-                                        if full_url not in case_urls:  # Avoid duplicates
-                                            case_urls.append(full_url)
-                                            print(f"Found case: {full_url}")
-                                            
-                                            # Break if we have enough results
-                                            if len(case_urls) >= max_results:
-                                                break
-                
-                print(f"\nFound {len(case_urls)} case URLs")
-                return case_urls[:max_results]
-            
-            print("No results found")
-            return []
-            
+        # First visit the homepage to get cookies
+        session.get('https://indiankanoon.org/', headers=headers)
+        
+        # Add a small delay
+        time.sleep(2)
+        
+        # Now make the search request
+        response = session.get(search_url, headers=headers)
+        
+        # Log response details for debugging
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response headers: {response.headers}")
+        logger.info(f"Response content: {response.text[:500]}")  # Log first 500 chars
+        
+        response.raise_for_status()
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find all case links
+        case_urls = []
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            # Only include URLs that are actual case documents
+            if '/doc/' in href and '/undefined' not in href:
+                full_url = f"https://indiankanoon.org{href}"
+                if full_url not in case_urls:  # Avoid duplicates
+                    case_urls.append(full_url)
+                    print(f"Found case: {full_url}")
+                    
+                    # Break if we have enough results
+                    if len(case_urls) >= max_results:
+                        break
+        
+        print(f"\nFound {len(case_urls)} case URLs")
+        return case_urls[:max_results]
+        
+    except requests.RequestException as e:
+        print(f"Error making request: {str(e)}")
+        return []
     except Exception as e:
-        print(f"Error searching for cases: {str(e)}")
+        print(f"Error processing results: {str(e)}")
         return []
 
 async def crawl_single_url(url: str, company_name: str, crawler: AsyncWebCrawler) -> Optional[str]:
