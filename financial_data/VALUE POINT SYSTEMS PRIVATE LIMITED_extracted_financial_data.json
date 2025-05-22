@@ -1,0 +1,26 @@
+{
+    "company_name": "Value Point Systems Private Limited",
+    "financial_year": "FY 2023",
+    "financial_metrics_YoY_growth": {
+        "Total Revenue": "10.99 %",
+        "Revenue from Operations": "10.73 %",
+        "Total Assets": "49.71 %",
+        "Profit or Loss": "25.60 %",
+        "Net Worth": "37.35 %",
+        "EBITDA": "14.64 %"
+    },
+    "charge_details_in_cr": {
+        "Total Open Charges": "134.22 ₹ Cr",
+        "Total Satisfied Charges": "37.98 ₹ Cr",
+        "Charges Breakdown by Lending Institution": {
+            "Axis Bank Limited": "69.22 ₹ Cr",
+            "Hdfc Bank Limited": "35.00 ₹ Cr",
+            "Others": "30.00 ₹ Cr"
+        },
+        "Total Number of Lenders": 3,
+        "Top Lender": "Axis Bank Limited",
+        "Last Charge Activity": "A charge with Hdfc Bank Limited amounted to Rs. 35.00 Cr with Charge ID 100948371 was registered on 04 Jul 2024.",
+        "Last Charge Date": "04 Jul 2024",
+        "Last Charge Amount": "35.00 ₹ Cr"
+    }
+}
