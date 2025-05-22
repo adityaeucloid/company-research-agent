@@ -38,19 +38,18 @@ def check_ec2_requirements():
     try:
         subprocess.run(['which', 'google-chrome'], capture_output=True, check=True)
     except subprocess.CalledProcessError:
-        try:
-            subprocess.run(['which', 'chromium-browser'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            missing_deps.append("Chrome/Chromium browser")
+        missing_deps.append("Chrome/Chromium browser")
     
     # Check for required system libraries
-    required_libs = ['libnss3', 'libatk1.0-0', 'libatk-bridge2.0-0', 'libcups2', 
-                    'libdrm2', 'libxkbcommon0', 'libxcomposite1', 'libxdamage1', 
-                    'libxfixes3', 'libxrandr2', 'libgbm1', 'libasound2']
+    required_libs = [
+        'libX11', 'libXcomposite', 'libXcursor', 'libXdamage', 'libXext',
+        'libXi', 'libXtst', 'cups-libs', 'libXScrnSaver', 'libXrandr',
+        'alsa-lib', 'pango', 'atk', 'at-spi2-atk', 'gtk3'
+    ]
     
     for lib in required_libs:
         try:
-            subprocess.run(['dpkg', '-l', lib], capture_output=True, check=True)
+            subprocess.run(['rpm', '-q', lib], capture_output=True, check=True)
         except subprocess.CalledProcessError:
             missing_deps.append(lib)
     
@@ -58,10 +57,12 @@ def check_ec2_requirements():
         print("Missing dependencies for EC2:")
         for dep in missing_deps:
             print(f"- {dep}")
-        print("\nTo install dependencies on EC2, run:")
-        print("sudo apt-get update")
-        print("sudo apt-get install -y google-chrome-stable")
-        print("sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2")
+        print("\nTo install dependencies on Amazon Linux, run:")
+        print("sudo yum update -y")
+        print("sudo yum install -y wget")
+        print("wget https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm")
+        print("sudo yum install -y ./google-chrome-stable_current_x86_64.rpm")
+        print("sudo yum install -y libX11 libXcomposite libXcursor libXdamage libXext libXi libXtst cups-libs libXScrnSaver libXrandr alsa-lib pango atk at-spi2-atk gtk3")
         sys.exit(1)
 
 # Check EC2 requirements before proceeding
