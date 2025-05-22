@@ -22,7 +22,6 @@ from json import JSONDecoder, JSONDecodeError
 from dotenv import load_dotenv
 import google.generativeai as genai
 from bs4 import BeautifulSoup
-import random
 
 # Load environment variables
 load_dotenv()
@@ -260,41 +259,6 @@ async def tavily_search_company(company_name: str, max_results: int = 10) -> lis
     
     return urls
 
-def get_random_user_agent() -> str:
-    """
-    Return a random user agent from a list of common browsers.
-    """
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
-    ]
-    return random.choice(user_agents)
-
-def get_browser_headers() -> dict:
-    """
-    Return a dictionary of browser-like headers.
-    """
-    return {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "DNT": "1"
-    }
-
 async def crawl_company_data(urls: list[str], company_name: str, max_pages: int = 10, max_depth: int = 2) -> tuple[str, str]:
     """
     Crawl the provided URLs using advanced crawling techniques and return concatenated markdown content.
@@ -303,71 +267,7 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
     browser_config = BrowserConfig(
         headless=True,
         browser_type="chromium",
-        user_agent=get_random_user_agent(),
-        headers=get_browser_headers(),
-        viewport={"width": 1920, "height": 1080},
-        device_scale_factor=1,
-        is_mobile=False,
-        has_touch=False,
-        java_script_enabled=True,
-        timezone_id="Asia/Kolkata",
-        locale="en-US",
-        geolocation={"latitude": 12.9716, "longitude": 77.5946},  # Bangalore coordinates
-        permissions=["geolocation"],
-        extra_http_headers={
-            "Referer": "https://www.google.com/",
-            "Origin": "https://www.google.com"
-        }
-    )
-
-    filter_chain = FilterChain([
-        DomainFilter(
-            allowed_domains=["zaubacorp.com", "indiafilings.com", "falconebiz.com"],
-            blocked_domains=["linkedin.com", "facebook.com", "twitter.com"]
-        ),
-        URLPatternFilter(
-            patterns=[
-                r"https://.*",
-                r"*company*",
-                r"*financial*",
-                r"*directors*",
-                r"*overview*",
-                r"*profile*",
-                r"*details*"
-            ]
-        ),
-        ContentTypeFilter(allowed_types=["text/html"]),
-        ContentRelevanceFilter(
-            query=f"financial data {company_name}",
-            threshold=0.7
-        )
-    ])
-
-    keyword_scorer = KeywordRelevanceScorer(
-        keywords=[
-            "company", "financial", "directors", "cin", "incorporation",
-            "capital", "balance sheet", "annual report", "registration",
-            "roc", "status", "address", "email", company_name.lower()
-        ],
-        weight=0.8
-    )
-
-    run_config = CrawlerRunConfig(
-        deep_crawl_strategy=BestFirstCrawlingStrategy(
-            max_depth=max_depth,
-            include_external=False,
-            max_pages=max_pages,
-            filter_chain=filter_chain,
-            url_scorer=keyword_scorer
-        ),
-        excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
-        cache_mode='BYPASS',
-        verbose=True,
-        request_delay=random.uniform(2, 5),  # Random delay between requests
-        extraction_strategy=LLMExtractionStrategy(
-            extract_metadata=True,
-            extract_links=False
-        )
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     )
 
     markdown_content = []
@@ -397,11 +297,54 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
                         continue
                     print(f"Validated falconebiz URL with CIN {cin_code}: {url}")
 
+                # Create a focused filter chain for each URL
+                parsed_url = urlparse(url)
+                website_name = parsed_url.netloc.replace("www.", "").split(".")[0]
+                
+                filter_chain = FilterChain([
+                    DomainFilter(
+                        allowed_domains=[parsed_url.netloc],
+                        blocked_domains=[]
+                    ),
+                    URLPatternFilter(
+                        patterns=[url]  # Only crawl the exact URL
+                    ),
+                    ContentTypeFilter(allowed_types=["text/html"]),
+                    ContentRelevanceFilter(
+                        query=f"company data {company_name}",
+                        threshold=0.5  # Lower threshold for better matching
+                    )
+                ])
+
+                keyword_scorer = KeywordRelevanceScorer(
+                    keywords=[
+                        "company", "financial", "directors", "cin", "incorporation",
+                        "capital", "balance sheet", "annual report", "registration",
+                        "roc", "status", "address", "email", company_name.lower()
+                    ],
+                    weight=0.8
+                )
+
+                run_config = CrawlerRunConfig(
+                    deep_crawl_strategy=BestFirstCrawlingStrategy(
+                        max_depth=0,  # Don't follow links
+                        include_external=False,
+                        max_pages=1,  # Only crawl the main page
+                        filter_chain=filter_chain,
+                        url_scorer=keyword_scorer
+                    ),
+                    excluded_tags=['header', 'footer', 'form', 'nav', 'script', 'style'],
+                    cache_mode='BYPASS',
+                    verbose=True,
+                    extraction_strategy=LLMExtractionStrategy(
+                        extract_metadata=True,
+                        extract_links=False
+                    )
+                )
+
                 result = await crawler.arun(url=url, config=run_config)
                 crawl_stats["total_pages"] += 1
                 
-                parsed_url = urlparse(url)
-                website_name = parsed_url.netloc.replace("www.", "").split(".")[0]
                 print(f"Website name: {website_name}")
                 
                 if isinstance(result, list) and result:
