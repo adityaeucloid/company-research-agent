@@ -297,22 +297,22 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
                         continue
                     print(f"Validated falconebiz URL with CIN {cin_code}: {url}")
 
-                # Create a focused filter chain for each URL
                 parsed_url = urlparse(url)
                 website_name = parsed_url.netloc.replace("www.", "").split(".")[0]
                 
+                # Create a focused filter chain for each URL
                 filter_chain = FilterChain([
                     DomainFilter(
                         allowed_domains=[parsed_url.netloc],
                         blocked_domains=[]
                     ),
                     URLPatternFilter(
-                        patterns=[url]  # Only crawl the exact URL
+                        patterns=[url]
                     ),
                     ContentTypeFilter(allowed_types=["text/html"]),
                     ContentRelevanceFilter(
                         query=f"company data {company_name}",
-                        threshold=0.5  # Lower threshold for better matching
+                        threshold=0.5
                     )
                 ])
 
@@ -327,9 +327,9 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
 
                 run_config = CrawlerRunConfig(
                     deep_crawl_strategy=BestFirstCrawlingStrategy(
-                        max_depth=0,  # Don't follow links
+                        max_depth=0,
                         include_external=False,
-                        max_pages=1,  # Only crawl the main page
+                        max_pages=1,
                         filter_chain=filter_chain,
                         url_scorer=keyword_scorer
                     ),
@@ -342,6 +342,7 @@ async def crawl_company_data(urls: list[str], company_name: str, max_pages: int 
                     )
                 )
 
+                print(f"Starting crawl for URL: {url}")
                 result = await crawler.arun(url=url, config=run_config)
                 crawl_stats["total_pages"] += 1
                 
