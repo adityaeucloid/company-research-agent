@@ -4,7 +4,7 @@ import json
 import os
 import pandas as pd
 from dotenv import load_dotenv
-from combined_financials import main as financials_main, COMPANY_NAME
+from combined_financials import main as financials_main
 from detailed_overview import CompanyOverviewGenerator
 import logging
 
@@ -121,6 +121,17 @@ def flatten_dict(d, parent_key='', sep=' - '):
             items.append((new_key, v))
     return dict(items)
 
+def convert_to_string(value):
+    """Convert any value to string format."""
+    if isinstance(value, (int, float)):
+        return f"{value:,.2f}"
+    elif isinstance(value, dict):
+        return json.dumps(value, indent=2)
+    elif isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    else:
+        return str(value)
+
 def extract_expandable_sections(data):
     """Extract sections that should be displayed as expandable tables."""
     expandable_sections = {
@@ -176,17 +187,6 @@ def organize_financial_data(data):
         'Financial Metrics YoY': financial_metrics,
         'Other Information': other_data
     }
-
-def convert_to_string(value):
-    """Convert any value to string format."""
-    if isinstance(value, (int, float)):
-        return f"{value:,.2f}"
-    elif isinstance(value, dict):
-        return json.dumps(value, indent=2)
-    elif isinstance(value, list):
-        return ", ".join(str(item) for item in value)
-    else:
-        return str(value)
 
 def display_financial_data(data, section_name):
     """Display financial data in organized sections."""
@@ -393,12 +393,9 @@ def display_nested_data(data, section_name):
 def process_company_data(company_name):
     """Process company data and return the results."""
     try:
-        # Update COMPANY_NAME in combined_financials
-        globals()['COMPANY_NAME'] = company_name.upper()
-
         # Run financials extraction
         try:
-            asyncio.run(financials_main())
+            asyncio.run(financials_main(company_name))
             financial_file = f"financial_data/{company_name}_extracted_financial_data.json"
             if os.path.exists(financial_file):
                 with open(financial_file, 'r', encoding='utf-8') as f:
