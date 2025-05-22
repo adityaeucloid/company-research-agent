@@ -21,9 +21,6 @@ import google.generativeai as genai
 import json
 import time
 
-# Define the company name at the top
-COMPANY_NAME = "VALUE POINT SYSTEMS PRIVATE LIMITED"
-
 # Load environment variables
 load_dotenv()
 
@@ -332,14 +329,14 @@ def extract_financial_metrics(text: str, company_name: str):
         print(f"Error processing with Gemini API: {e}")
         return {}
 
-async def main():
+async def main(company_name: str):
     """
     Main function to extract CIN from zaubacorp URL, crawl thecompanycheck.com, and extract financial metrics.
     """
     max_results = 1
 
     # Step 1: Search for zaubacorp.com URL
-    zaubacorp_urls = await tavily_search_company(COMPANY_NAME, max_results)
+    zaubacorp_urls = await tavily_search_company(company_name, max_results)
     if not zaubacorp_urls:
         print("No zaubacorp URL found for the company")
         return
@@ -352,28 +349,28 @@ async def main():
     print(f"Extracted CIN: {cin_code}")
 
     # Step 3: Construct thecompanycheck.com URL
-    companycheck_url = construct_companycheck_url(COMPANY_NAME, cin_code)
+    companycheck_url = construct_companycheck_url(company_name, cin_code)
     print(f"Constructed thecompanycheck URL: {companycheck_url}")
 
     # Step 4: Crawl thecompanycheck.com
-    companycheck_content = await crawl_companycheck_data(companycheck_url, COMPANY_NAME)
+    companycheck_content = await crawl_companycheck_data(companycheck_url, company_name)
     if not companycheck_content:
         print("No content crawled from thecompanycheck URL")
         return
 
     # Step 5: Read the saved file and extract financial metrics
     try:
-        scraped_text = read_file(COMPANY_NAME)
+        scraped_text = read_file(company_name)
     except Exception:
         print("Failed to read the scraped file")
         return
 
     # Step 6: Extract metrics and charge details using Gemini
-    extracted_data = extract_financial_metrics(scraped_text, COMPANY_NAME)
+    extracted_data = extract_financial_metrics(scraped_text, company_name)
 
     # Step 7: Save and print the extracted data
     if extracted_data:
-        output_file = f"financial_data/{COMPANY_NAME}_extracted_financial_data.json"
+        output_file = f"financial_data/{company_name}_extracted_financial_data.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(extracted_data, f, indent=4, ensure_ascii=False)
         print(f"\nExtracted financial data saved to {output_file}")
@@ -384,4 +381,6 @@ async def main():
     print("Processing completed successfully")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # For testing purposes only
+    test_company = "VALUE POINT SYSTEMS PRIVATE LIMITED"
+    asyncio.run(main(test_company))
